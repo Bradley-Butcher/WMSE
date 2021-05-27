@@ -1,1 +1,1 @@
-[A|G][B][C|I:J][D|C][E|D:I][F|B][G|B:J][H|E:J][I][J]
+[A|B:C][B|E][C|D][D][E]

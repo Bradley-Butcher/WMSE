@@ -27,10 +27,11 @@ def nb_mean(array, axis):
     return np_apply_along_axis(np.mean, axis, array)
 
 
-def score(data: np.ndarray, child_idx: int, parent_idxs: np.ndarray, scaled_kl: bool = True) -> float:
+def score(data: np.ndarray, child_idx: int, parent_idxs: np.ndarray, scaled_kl: bool = True,
+          dynamic_norm: bool = True) -> float:
     levels = np.array([np.unique(data[:, i]).astype(int).tolist() for i in range(data.shape[1])])
     parent_combinations = np.array(np.meshgrid(*levels[parent_idxs].tolist())).T.reshape(-1, len(parent_idxs))
-    return _score(data, child_idx, parent_idxs, levels, parent_combinations, scaled_kl)
+    return _score(data, child_idx, parent_idxs, levels, parent_combinations, scaled_kl, dynamic_norm)
 
 
 def _score(data: np.ndarray,
@@ -38,7 +39,8 @@ def _score(data: np.ndarray,
            parent_idxs: np.ndarray,
            levels: np.ndarray,
            parent_combinations: np.ndarray,
-           scaled_kl: bool) -> float:
+           scaled_kl: bool,
+           dynamic_norm: bool) -> float:
     p_ygxs = np.zeros([len(parent_combinations), len(levels[child_idx])])
     p_xs = np.zeros(len(parent_combinations))
 
@@ -54,17 +56,38 @@ def _score(data: np.ndarray,
         _, py_counts = np.unique(data[:, child_idx], return_counts=True)
         p_y = py_counts / data.shape[0]
         if scaled_kl:
-            return _drce_l2(p_ygxs, p_y, p_xs)
+            return _drce_l2(p_ygxs, p_y, p_xs), p_y
         else:
-            return np.sum(p_xs * np.sum(p_ygxs * np.log(p_ygxs), axis=1))
+            return np.sum(p_xs * np.sum(p_ygxs * np.log(p_ygxs), axis=1)), p_y
 
     n_params = (p_ygxs.shape[0] * (p_ygxs.shape[1] - 1))
     if scaled_kl:
-        penalty = 1 * n_params * np.log(data.shape[0])
-        return _inner_score(p_ygxs, p_xs) - n_params ** 2 / np.min([1000, data.shape[0]])
+        score, p_y = _inner_score(p_ygxs, p_xs)
+        if dynamic_norm:
+            penalty = uni_pen_2(n_params, p_y, data.shape[0])
+        else:
+            penalty = sqrt_pen(n_params, data.shape[0])
+        return score - penalty, penalty
     else:
+        score, p_y = _inner_score(p_ygxs, p_xs)
         penalty = -1 * n_params * np.log(data.shape[0])
-        return penalty + _inner_score(p_ygxs, p_xs) * data.shape[0]
+        return penalty + score * data.shape[0], penalty
+
+
+def sqrt_pen(n_params, N):
+    return (n_params * np.sqrt(N)) / (N * 2)
+
+
+def uni_pen_1(n_params, p_y, N):
+    uni = np.ones(p_y.shape[0]) / p_y.shape[0]
+    distance = np.sqrt(np.sum((p_y - uni) ** 2))
+    return (n_params * np.sqrt(N)) / (N * (1 + distance) * 2)
+
+
+def uni_pen_2(n_params, p_y, N):
+    uni = np.ones(p_y.shape[0]) / p_y.shape[0]
+    distance = np.sqrt(np.sum((p_y - uni) ** 2))
+    return (n_params ** 2) / (N * (1 / 1 - (distance / p_y.shape[0])))
 
 
 @njit
@@ -78,7 +101,8 @@ def _drce_l1(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
 def _drce_l2(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
     mu = nb_mean(p_ygxs, axis=0)
     eucl = lambda x, y: np.sqrt(np.sum((x - y) ** 2))
-    distance = np.sum(p_xs * np.array([(eucl(p_ygxs[i, :], mu) - eucl(p_y, mu)) for i in range(p_ygxs.shape[0])]))
+    # distance = np.sum(p_xs * np.array([(eucl(p_ygxs[i, :], mu) - eucl(p_y, mu)) for i in range(p_ygxs.shape[0])]))
+    distance = np.sum(p_xs * np.array([eucl(p_ygxs[i, :], mu) for i in range(p_ygxs.shape[0])]))
     return distance
 
 
@@ -93,10 +117,10 @@ def _drce(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
 def score_from_data(data: pd.DataFrame, child: str, parents: List[str], scaled_kl: bool):
     child_idx = data.columns.get_loc(child)
     parent_idxs = np.array([data.columns.get_loc(parent) for parent in parents])
-    return score(data.values, child_idx, parent_idxs, scaled_kl)
+    return score(data.values, child_idx, parent_idxs, scaled_kl, False)
 
 
-def dag_score(dag: DAG, data: pd.DataFrame, scaled_kl: bool) -> float:
+def dag_score(dag: DAG, data: pd.DataFrame, scaled_kl: bool, dynamic_norm: bool) -> float:
     score_total = 0
     for node in dag.vs:
         parents = dag.get_ancestors(node, only_parents=True)
@@ -118,5 +142,6 @@ def dag_score(dag: DAG, data: pd.DataFrame, scaled_kl: bool) -> float:
                 base = penalty - len(data) * entropy
                 score_total += base
         else:
-            score_total += score(data.values, child_idx, parent_idxs, scaled_kl)
+            s, _ = score(data.values, child_idx, parent_idxs, scaled_kl, dynamic_norm)
+            score_total += s
     return score_total

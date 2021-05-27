@@ -119,7 +119,7 @@ def plot_simplex_from_data(data: pd.DataFrame, child: str, parents: List[str], s
     tax.get_axes().axis('off')
     tax.scatter([mu * 100], marker='*', c="yellow", s=200, label="mu")
 
-    score = score_from_data(data, child, parents, scaled_kl)
+    score, penalty = score_from_data(data, child, parents, scaled_kl)
     tax.set_title(f"P({child}|{','.join(parents)}), Score: {score:.5f}", fontsize=20)
 
     # distance = np.sum([np.abs(p_ygxs[i, :] - mu)])
@@ -137,11 +137,19 @@ def plot_simplex_from_data(data: pd.DataFrame, child: str, parents: List[str], s
         tax.line(p_ygxs[i, :] * 100, mu * 100, linewidth=3, color='k', alpha=0.35, linestyle="--")
 
     p_y = np.dot(p_xs, p_ygxs)
-    tax.scatter([p_y * 100], marker='+', c="blue", s=200, label="p(y)")
+    # tax.scatter([p_y * 100], marker='+', c="blue", s=200, label="p(y)")
+    pen_delta = mu.copy()
+    pen_delta[0] = pen_delta[0] + penalty
+    points = ternary_circle(mu * 100, np.sqrt(np.sum((pen_delta - mu)**2)) * 100)
+    tax.plot(points, linewidth=2.0, label="Penalty", c="black")
+    tax.line(mu * 100, pen_delta * 100, linewidth=1, color='red', alpha=0.35, linestyle="-.")
 
-    points = ternary_circle(mu * 100, np.sqrt(np.sum((p_y - mu)**2)) * 70)
-    tax.plot(points, linewidth=2.0, label="No Parent Threshold", c="black")
-    tax.line(mu * 100, p_y * 100, linewidth=1, color='red', alpha=0.35, linestyle="-.")
+    score_delta = mu.copy()
+    score_delta[0] = score_delta[0] + score + penalty
+    points = ternary_circle(mu * 100, np.sqrt(np.sum((score_delta - mu)**2)) * 70)
+    tax.plot(points, linewidth=2.0, label="Weighted Distance", c="blue")
+    tax.line(mu * 100, score_delta * 100, linewidth=1, color='red', alpha=0.35, linestyle="-.")
+
 
     fontsize = 20
     offset = 0.1

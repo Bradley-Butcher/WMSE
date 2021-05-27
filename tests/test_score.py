@@ -121,8 +121,8 @@ def test_highest():
 
     # BIC
 
-    true_score = dag_score(true_dag, data, scaled_kl=False)
-    scores = [dag_score(dag_i, data, scaled_kl=False) for dag_i in dags]
+    true_score = dag_score(true_dag, data, scaled_kl=False, dynamic_norm=False)
+    scores = [dag_score(dag_i, data, scaled_kl=False, dynamic_norm=False) for dag_i in dags]
     highest_dag = dags[np.argmax(scores)]
 
     sns.distplot(scores)
@@ -134,8 +134,8 @@ def test_highest():
     plots_from_dag(data, true_dag, plots_dir / "bic" / "true", scaled_kl=False)
     plots_from_dag(data, highest_dag, plots_dir / "bic" / "highest", scaled_kl=False)
 
-    true_dag.graph['label'] = f"True DAG, Score: {dag_score(true_dag, data, scaled_kl=False):.5f}"
-    highest_dag.graph['label'] = f"Highest DAG, Score: {dag_score(highest_dag, data, scaled_kl=False):.5f}"
+    true_dag.graph['label'] = f"True DAG, Score: {dag_score(true_dag, data, scaled_kl=False, dynamic_norm=False):.5f}"
+    highest_dag.graph['label'] = f"Highest DAG, Score: {dag_score(highest_dag, data, scaled_kl=False, dynamic_norm=False):.5f}"
 
     true_dag.plot(plots_dir / "bic" / "true" / "dag.png")
     highest_dag.plot(plots_dir / "bic" / "highest" / "dag.png")
@@ -144,8 +144,8 @@ def test_highest():
 
     # Scaled KL
 
-    true_score = dag_score(true_dag, data, scaled_kl=True)
-    scores = [dag_score(dag_i, data, scaled_kl=True) for dag_i in dags]
+    true_score = dag_score(true_dag, data, scaled_kl=True, dynamic_norm=False)
+    scores = [dag_score(dag_i, data, scaled_kl=True, dynamic_norm=False) for dag_i in dags]
     highest_dag = dags[np.argmax(scores)]
 
     plt.figure()
@@ -158,8 +158,8 @@ def test_highest():
     plots_from_dag(data, true_dag, plots_dir / "skl" / "true", scaled_kl=True)
     plots_from_dag(data, highest_dag, plots_dir / "skl" / "highest", scaled_kl=True)
 
-    true_dag.graph['label'] = f"True DAG, Score: {dag_score(true_dag, data, scaled_kl=True):.5f}"
-    highest_dag.graph['label'] = f"Highest DAG, Score: {dag_score(highest_dag, data, scaled_kl=True):.5f}"
+    true_dag.graph['label'] = f"True DAG, Score: {dag_score(true_dag, data, scaled_kl=True, dynamic_norm=False):.5f}"
+    highest_dag.graph['label'] = f"Highest DAG, Score: {dag_score(highest_dag, data, scaled_kl=True, dynamic_norm=False):.5f}"
 
     true_dag.plot(plots_dir / "skl" / "true" / "dag.png")
     highest_dag.plot(plots_dir / "skl" / "highest" / "dag.png")
