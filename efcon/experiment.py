@@ -1,6 +1,7 @@
+# %%
 from typing import List
 
-from efcon.simple_hillclimbing import hill_climbing
+from simple_hillclimbing import hill_climbing
 from baynet import metrics, DAG
 from tqdm import tqdm
 import pandas as pd
@@ -17,12 +18,12 @@ def scores(true_dag, comp_dag):
     }
 
 
-def experiment(samples: List[int], alpha: List[float], n_exp: int, filename: str, max_iter: int = 50, struc_type: str = ):
+def experiment(samples: List[int], alpha: List[float], n_exp: int, filename: str, max_iter: int = 50, struc_type: str = "ide_cozman"):
     results = []
     with tqdm(total=n_exp * len(samples)) as pbar:
         for i in range(n_exp):
             seed = i
-            true_dag = DAG.generate("ide_cozman", 10, seed=seed)
+            true_dag = DAG.generate(struc_type, 10, seed=seed)
             true_dag.generate_discrete_parameters(alpha=alpha, min_levels=3, max_levels=3, seed=seed)
             for n_sample in samples:
                 data = true_dag.sample(n_sample, seed=n_sample).astype(int)
@@ -37,7 +38,7 @@ def experiment(samples: List[int], alpha: List[float], n_exp: int, filename: str
                 results_df = pd.DataFrame(results)
                 results_df.to_csv(f"../results/{filename}.csv")
 
-
+# %%
 if __name__ == "__main__":
     n_exp = 10
     low_samples = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
@@ -45,16 +46,13 @@ if __name__ == "__main__":
 
     # Low Sample Experiments
 
-    # experiment(samples=low_samples, alpha=[10, 10, 10], n_exp=n_exp, filename="balanced_low")
-    # experiment(samples=low_samples, alpha=[30, 10, 10], n_exp=n_exp, filename="mid_imb_low")
-    # experiment(samples=low_samples, alpha=[10, 50, 10], n_exp=n_exp, filename="extreme_imb_low")
-
-    experiment(samples=low_samples, alpha=10, n_exp=n_exp, filename="dynamic_low")
-
+    experiment(samples=low_samples, alpha=[10, 10, 10], n_exp=n_exp, filename="balanced_low")
+    experiment(samples=low_samples, alpha=[30, 10, 10], n_exp=n_exp, filename="mid_imb_low")
+    experiment(samples=low_samples, alpha=[10, 50, 10], n_exp=n_exp, filename="extreme_imb_low")
 
     # Normal Sample Experiments
 
-    # experiment(samples=samples, alpha=[10, 10, 10], n_exp=n_exp, filename="balanced")
-    # experiment(samples=samples, alpha=[30, 10, 10], n_exp=n_exp, filename="mid_imb")
-    # experiment(samples=samples, alpha=[10, 50, 10], n_exp=n_exp, filename="extreme_imb")
+    experiment(samples=samples, alpha=[10, 10, 10], n_exp=n_exp, filename="balanced")
+    experiment(samples=samples, alpha=[30, 10, 10], n_exp=n_exp, filename="mid_imb")
+    experiment(samples=samples, alpha=[10, 50, 10], n_exp=n_exp, filename="extreme_imb")
 

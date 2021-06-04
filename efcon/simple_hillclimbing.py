@@ -4,15 +4,16 @@ from baynet import DAG
 
 from efcon.main import dag_score
 
+import tqdm
 
 def hill_climbing(data: pd.DataFrame, iterations: int = 10, drdc: bool = True, dynamic_norm: bool = True):
     n_var = len(data.columns)
     current_amat = np.zeros([n_var, n_var])
     current_score = dag_score(DAG.from_amat(current_amat, colnames=data.columns), data, scaled_kl=drdc, dynamic_norm=dynamic_norm)
-    for i in range(iterations):
+    for i in tqdm.tqdm(range(iterations)):
         best_improvement = 0
         best_amat = current_amat
-        for j in range(current_amat.size):
+        for j in tqdm.tqdm(range(current_amat.size)):
             mod_amat = current_amat.copy()
             mod_amat[int(j / n_var), j % n_var] = 1
 

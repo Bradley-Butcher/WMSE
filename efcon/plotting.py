@@ -8,7 +8,7 @@ import ternary
 from baynet import DAG, metrics
 from matplotlib import pyplot as plt
 
-from efcon.main import score_from_data
+from main import score_from_data
 
 
 def get_distributions(data: pd.DataFrame, child: str, parents: List[str]):

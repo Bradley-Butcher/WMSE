@@ -1,0 +1,1 @@
+[A|C:L][B|S][C][D][E|O][F|M][G|T][H|C][I][J|E:S][K|I:J][L|B:H][M|I:S][N|A:D][O|D][P|B:F:O][Q|K][R|N:T][S][T|F]

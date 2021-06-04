@@ -6,6 +6,7 @@ from numba import njit, jit
 from baynet import DAG
 import pandas as pd
 
+from efcon.faster import weighted_mse
 
 @njit
 def np_apply_along_axis(func1d, axis, arr):
@@ -100,11 +101,11 @@ def _drce_l1(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
 
 def _drce_l2(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
     mu = nb_mean(p_ygxs, axis=0)
+    # mu = np.ones(len(p_y)) / len(p_y)
     eucl = lambda x, y: np.sqrt(np.sum((x - y) ** 2))
     # distance = np.sum(p_xs * np.array([(eucl(p_ygxs[i, :], mu) - eucl(p_y, mu)) for i in range(p_ygxs.shape[0])]))
     distance = np.sum(p_xs * np.array([eucl(p_ygxs[i, :], mu) for i in range(p_ygxs.shape[0])]))
     return distance
-
 
 @njit
 def _drce(p_ygxs: np.ndarray, p_y: np.ndarray, p_xs: np.ndarray) -> float:
@@ -142,6 +143,5 @@ def dag_score(dag: DAG, data: pd.DataFrame, scaled_kl: bool, dynamic_norm: bool)
                 base = penalty - len(data) * entropy
                 score_total += base
         else:
-            s, _ = score(data.values, child_idx, parent_idxs, scaled_kl, dynamic_norm)
-            score_total += s
+            score_total += weighted_mse(data.values, child_idx, parent_idxs)
     return score_total
