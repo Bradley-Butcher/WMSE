@@ -2,11 +2,35 @@ import pandas as pd
 import numpy as np
 from baynet import DAG
 
-from wmse.score_function import Scorer
 from wmse.fges.fges_scores import WMSEScore, BICScore, qNMLScore, BDeuScore
+from wmse.scores import weighted_mse, bic, qnml, bdeu
 from wmse.fges.fges import FGES
 
 import tqdm
+
+class Scorer:
+    def __init__(self):
+        self.scores: Dict[tuple, float] = {}
+
+    def score(self, dag: DAG, data: pd.DataFrame, score: str = "wmse") -> float:
+        scores = {
+            "wmse": weighted_mse,
+            "bic": bic,
+            "qnml": qnml,
+            "bdeu": bdeu
+        }
+        total = 0
+        for node in dag.vs:
+            parents = dag.get_ancestors(node, only_parents=True)
+            child_idx = data.columns.get_loc(node["name"])
+            parent_idxs = tuple(data.columns.get_loc(parent["name"]) for parent in parents)
+            if lookup_score := self.scores.get((child_idx, parent_idxs)):
+                total += lookup_score
+            else:
+                calc_score = scores[score](data, child_idx, np.array(parent_idxs))
+                self.scores[(child_idx, parent_idxs)] = calc_score
+                total += calc_score
+        return total
 
 def _step(data: pd.DataFrame, amat: np.ndarray, score: str, j: int, scorer: Scorer):
     n_var = len(data.columns)

@@ -1,6 +1,7 @@
 # %%
 import sys
 sys.path.append('/mnt/c/Users/Bradley/Desktop/EfCon')
+
 from wmse.experiment import experiment
 from pathlib import Path
 # ----------------------------------- BASE EXPERIMENT CONFIGURATION ----------------------------------------
