@@ -1,266 +1,202 @@
 import numpy as np
-from numba import jit, njit, float64, int64
+from numba import njit, float64, int64
 from baynet import DAG
 import pandas as pd
 
 from typing import Dict
+from wmse.score_function import weighted_mse, bic, qnml
 
 from math import lgamma, log, pi
 from itertools import combinations
 
-from scipy.special import digamma, gammaln, gamma
+from scipy.special import digamma, gammaln
 from scipy.stats import norm, entropy
 
+from numba import jit, njit
 
 adtree_available = False
 
-@njit
-def cartesian(arrays, out=None):
-    arrays = [np.asarray(x) for x in arrays]
-    dtype = arrays[0].dtype
 
-    n_i = [x.size for x in arrays]
-    n = 1
-    for item in n_i:
-        n *= item
-    if out is None:
-        out = np.zeros((n, len(arrays)), dtype=np.int64)
 
-    m = int(n / arrays[0].size)
-    out[:, 0] = np.repeat(arrays[0], m)
-    if arrays[1:]:
-        cartesian(arrays[1:], out=out[0:m, 1:])
-        for j in range(1, arrays[0].size):
-            out[j * m:(j + 1) * m, 1:] = out[0:m, 1:]
-    return out
+# @njit
+# def cartesian(arrays, out=None):
+#     arrays = [np.asarray(x) for x in arrays]
+#     dtype = arrays[0].dtype
 
-@njit
-def nb_mean(array, axis):
-    return np_apply_along_axis(np.mean, axis, array)
+#     n_i = [x.size for x in arrays]
+#     n = 1
+#     for item in n_i:
+#         n *= item
+#     if out is None:
+#         out = np.zeros((n, len(arrays)), dtype=np.int64)
 
-@njit
-def nb_sum(array, axis):
-    return np_apply_along_axis(np.sum, axis, array)
+#     m = int(n / arrays[0].size)
+#     out[:, 0] = np.repeat(arrays[0], m)
+#     if arrays[1:]:
+#         cartesian(arrays[1:], out=out[0:m, 1:])
+#         for j in range(1, arrays[0].size):
+#             out[j * m:(j + 1) * m, 1:] = out[0:m, 1:]
+#     return out
 
-@njit
-def nb_all(array, axis):
-    return np_apply_along_axis(np.all, axis, array)
+# @njit
+# def nb_mean(array, axis):
+#     return np_apply_along_axis(np.mean, axis, array)
 
-@njit
-def nb_abs(array, axis):
-    return np_apply_along_axis(np.abs, axis, array)
+# @njit
+# def nb_sum(array, axis):
+#     return np_apply_along_axis(np.sum, axis, array)
 
-@njit
-def np_apply_along_axis(func1d, axis, arr):
-    assert arr.ndim == 2
-    assert axis in [0, 1]
-    if axis == 0:
-        result = np.empty(arr.shape[1])
-        for i in range(len(result)):
-            result[i] = func1d(arr[:, i])
-    else:
-        result = np.empty(arr.shape[0])
-        for i in range(len(result)):
-            result[i] = func1d(arr[i, :])
-    return result
+# @njit
+# def nb_all(array, axis):
+#     return np_apply_along_axis(np.all, axis, array)
 
-@njit
-def nb_argwhere_all(data, value):
-    indicies = np.zeros(data.shape[0], dtype=np.bool_)
-    for i in range(data.shape[0]):
-        eval = data[i] == value
-        prod = 1
-        if data.ndim > 1:
-            for e in eval:
-                prod *= e
+# @njit
+# def np_apply_along_axis(func1d, axis, arr):
+#     assert arr.ndim == 2
+#     assert axis in [0, 1]
+#     if axis == 0:
+#         result = np.empty(arr.shape[1])
+#         for i in range(len(result)):
+#             result[i] = func1d(arr[:, i])
+#     else:
+#         result = np.empty(arr.shape[0])
+#         for i in range(len(result)):
+#             result[i] = func1d(arr[i, :])
+#     return result
+
+# @njit
+# def nb_argwhere_all(data, value):
+#     indicies = np.zeros(data.shape[0], dtype=np.bool_)
+#     for i in range(data.shape[0]):
+#         eval = data[i] == value
+#         prod = 1
+#         if data.ndim > 1:
+#             for e in eval:
+#                 prod *= e
+#         else:
+#             prod *= eval
+#         indicies[i] = prod
+#     return np.where(indicies)[0]
+
+# @njit
+# def get_pygx_px(data: np.ndarray, y_idx: int, x_idxs: np.ndarray):
+#     parent_levels = [np.unique(data[:, x_idxs[i]]) for i in range(len(x_idxs))]
+#     child_levels = np.unique(data[:, y_idx])
+#     parent_combinations = cartesian(parent_levels)
+
+#     p_ykgxjs = np.zeros((len(child_levels), len(parent_combinations)), dtype=np.float64)
+#     p_xjs = np.zeros(len(parent_combinations), dtype=np.float64)
+
+#     for a, j in enumerate(parent_combinations):
+#         # parent_rows = np.argwhere(np.all(data[:, x_idxs] == j, axis=1)).flatten()
+#         parent_rows = nb_argwhere_all(data[:, x_idxs], j)
+#         parent_data = data[parent_rows, :]
+#         if parent_data.shape[0] == 0:
+#             p_xjs[a] = 0
+#             p_ykgxjs[:, a] = 0
+#             continue
+#         p_xjs[a] = len(parent_rows) / len(data)
+#         for b, k in enumerate(child_levels):
+#             child_rows = nb_argwhere_all(parent_data[:, y_idx], k)
+#             # child_rows = np.argwhere(data[parent_rows, y_idx] == k).flatten()
+#             p_ykgxjs[b, a] = len(child_rows) / len(parent_rows)
+
+#     return p_ykgxjs, p_xjs
+
+class WMSEScore:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def local_score(self, child: int, parents: list):
+
+        data = self.dataset
+
+        parents = np.array(parents)
+
+        return weighted_mse(data, child, parents)
+
+    def local_score_diff_parents(self, node1, node2, parents):
+        return self.local_score(node2, parents + [node1]) - self.local_score(node2, parents)
+
+    def local_score_diff(self, node1, node2):
+        return self.local_score_diff_parents(node1, node2, [])
+
+class BICScore:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def local_score(self, child: int, parents: list):
+
+        data = self.dataset
+
+        parents = np.array(parents)
+
+        return bic(data, child, parents)
+
+    def local_score_diff_parents(self, node1, node2, parents):
+        return self.local_score(node2, parents + [node1]) - self.local_score(node2, parents)
+
+    def local_score_diff(self, node1, node2):
+        return self.local_score_diff_parents(node1, node2, [])
+
+
+class qNMLScore:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def local_score(self, child: int, parents: list):
+
+        data = self.dataset
+
+        parents = np.array(parents)
+
+        return qnml(data, child, parents)
+
+    def local_score_diff_parents(self, node1, node2, parents):
+        return self.local_score(node2, parents + [node1]) - self.local_score(node2, parents)
+
+    def local_score_diff(self, node1, node2):
+        return self.local_score_diff_parents(node1, node2, [])
+
+
+class BDeuScore:
+    def __init__(self, dataset, equivalent_sample_size=1.0):
+        self.columns = dataset.columns
+        self.dataset = dataset
+        dataset = dataset.apply(lambda col: pd.Categorical(col))
+        data = DiscreteData(data_source=dataset)
+        self.bdeu = BDeu(alpha=equivalent_sample_size, data=data)
+    
+    def local_score(self, child, parents):
+        if parents is not None and len(parents) > 0:
+            return self.bdeu.bdeu_score(self.columns[child], tuple(self.columns[p] for p in parents))[0]
         else:
-            prod *= eval
-        indicies[i] = prod
-    return np.where(indicies)[0]
-
-@njit
-def get_pygx_px(data: np.ndarray, y_idx: int, x_idxs: np.ndarray):
-    parent_levels = [np.unique(data[:, x_idxs[i]]) for i in range(len(x_idxs))]
-    child_levels = np.unique(data[:, y_idx])
-    parent_combinations = cartesian(parent_levels)
-
-    p_ykgxjs = np.zeros((len(child_levels), len(parent_combinations)), dtype=np.float64)
-    p_xjs = np.zeros(len(parent_combinations), dtype=np.float64)
-
-    for a, j in enumerate(parent_combinations):
-        parent_rows = nb_argwhere_all(data[:, x_idxs], j)
-        parent_data = data[parent_rows, :]
-        if parent_data.shape[0] == 0:
-            p_xjs[a] = 0
-            p_ykgxjs[:, a] = 0
-            continue
-        p_xjs[a] = len(parent_rows) / len(data)
-        for b, k in enumerate(child_levels):
-            child_rows = nb_argwhere_all(parent_data[:, y_idx], k)
-            p_ykgxjs[b, a] = len(child_rows) / len(parent_rows)
-
-    return p_ykgxjs, p_xjs
-
-def weighted_mse(data: pd.DataFrame, child: int, parents: np.ndarray, regret_penalty: bool = False, split: bool = False):
-
-    data = data.values
-
-    score = 0
-
-    N = data.shape[0]
-
-    if len(parents) <= 0:
-        return score
-
-    p_ygxs, p_xs = get_pygx_px(data, child, parents)
-    
-    p_y = np.dot(p_ygxs, p_xs)
-
-    mu = nb_mean(p_ygxs, axis=1)
-    score = np.sum(p_xs * np.sqrt(nb_sum((p_ygxs.T - mu) ** 2, axis=1)))
-
-    if regret_penalty:
-        penalty = regret(N, p_ygxs.size) - regret(N, p_ygxs.shape[0]) / np.sqrt(N * 2) 
-    else:
-        params = (p_ygxs.shape[1] * (p_ygxs.shape[0] - 1))
-        penalty = params * np.log(data.shape[0]) / (data.shape[0] / np.log(data.shape[0]))
-    
-    return score - penalty
-    
-
-def bic(data: pd.DataFrame, child: int, parents: np.ndarray):
-
-    data = data.values
-
-    if len(parents) <= 0:
-        _, f_x = np.unique(data[:, child], return_counts=True)
-        p_x = f_x / data.shape[0]
-        entropy = -np.sum(p_x * np.log(p_x))
-        penalty = -1 * (p_x.shape[0] - 1) * np.log(data.shape[0])
-        return penalty - data.shape[0] * entropy
-    
-    p_ygxs, p_xs = get_pygx_px(data, child, parents)
-
-    params = (p_ygxs.shape[1] * (p_ygxs.shape[0] - 1))
-
-    cond_entropy = np.sum(p_xs * np.sum(p_ygxs * np.log(p_ygxs), axis=0))
-    penalty = -1 * params * np.log(data.shape[0])
-    return penalty + cond_entropy * data.shape[0]
-
-def qnml(data: pd.DataFrame, child: int, parents: np.ndarray) -> float:
-
-    data = data.values
-
-    N = data.shape[0]
-
-    if len(parents) <= 0:
-        _, f_x = np.unique(data[:, child], return_counts=True)
-        p_x = f_x / N
-        entropy = (-np.sum(p_x * np.log2(p_x))) * N
-        regrets = regret(N, len(p_x)) - regret(N, 1)
-        return -(entropy + regrets)
-
-    p_ygxs, p_xs = get_pygx_px(data, child, parents)
-
-    cond_entropy = (-np.sum(p_xs * np.sum(p_ygxs * np.log2(p_ygxs), axis=0))) * N
-
-    regrets = regret(N, p_ygxs.size) - regret(N, p_ygxs.shape[0])
-    return -(regrets + cond_entropy) - len(parents) * np.log(2)
+            return self.bdeu.bdeu_score(self.columns[child], tuple([]))[0]
 
 
-class Scorer:
-    def __init__(self):
-        self.scores: Dict[tuple, float] = {}
 
-    def score(self, dag: DAG, data: pd.DataFrame, score: str = "wmse") -> float:
-        scores = {
-            "wmse": weighted_mse,
-            "bic": bic,
-            "qnml": qnml,
-            "bdeu": bdeu
-        }
-        total = 0
-        for node in dag.vs:
-            parents = dag.get_ancestors(node, only_parents=True)
-            child_idx = data.columns.get_loc(node["name"])
-            parent_idxs = tuple(data.columns.get_loc(parent["name"]) for parent in parents)
-            if lookup_score := self.scores.get((child_idx, parent_idxs)):
-                total += lookup_score
-            else:
-                calc_score = scores[score](data, child_idx, np.array(parent_idxs))
-                self.scores[(child_idx, parent_idxs)] = calc_score
-                total += calc_score
-        return total
+    def local_score_diff_parents(self, node1, node2, parents):
+        """
+        Method to compute the change in score resulting
+        from adding node1 to the list of parents.
+        :param node1: int representing the node to add
+                      to list of parents.
+        :param node2: int representing the node in question.
+        :param parents: list of ints representing the parent nodes.
+        """
+        return self.local_score(node2, parents + [node1]) - self.local_score(node2, parents)
 
-
-def _binary_regret_precal(num_categories: int) -> float:
-    some_var_p = 10
-    if num_categories < 1:
-        return 0.0
-    cur_sum = 1.0
-    i_bound = 1.0
-    bound = int(np.ceil(2.0 + np.sqrt(2.0 * num_categories * some_var_p * np.log(10))))
-    for i in range(bound):
-        i_bound = (num_categories - i) * (i_bound / num_categories)
-        cur_sum += i_bound
-    return cur_sum
-
-
-def _regret_precal(num_categories: int, unique_vals: int) -> float:
-    if unique_vals < 1:
-        return 0.0
-    if unique_vals == 1:
-        return 1.0
-    cur_sum = _binary_regret_precal(num_categories)
-    old_sum = 1.0
-    if unique_vals > 2:
-        for j in range(1, unique_vals - 1):
-            new_sum = cur_sum + (num_categories * old_sum) / float(j)
-            old_sum = cur_sum
-            cur_sum = new_sum
-    return cur_sum
-
-
-def regret(num_categories: int, unique_vals: int) -> float:
-    """
-    Compute the Szpankowski and Weinberger approximation for regret.
-
-    (normalization term for NML) for a vector.
-
-    :param num_categories: The length of the categorical vector which (q)NML is being calculated for
-    :type num_categories: integer
-    :param unique_vals: The number of unique categorical values in a vector
-    :type unique_vals: integer
-    :return: Regret approximation
-    :type: numpy.float64
-    """
-    if unique_vals > 100:
-        return _regret_eqn7(num_categories, unique_vals)
-    return _regret_eqn6(num_categories, unique_vals)
-
-def _regret_eqn7(num_categories: int, unique_vals: int, test: bool = False) -> float:
-    alpha = unique_vals / num_categories
-    cappa = 0.5 + 0.5 * np.sqrt(1 + 4 / alpha)
-    log_reg = num_categories * (
-        np.log(alpha) + (alpha + 2) * np.log(cappa) - 1 / cappa
-    ) - 0.5 * np.log(cappa + 2 / alpha)
-    if not test:
-        log_reg /= np.log(2)  ### matches the table in the paper WITHOUT this log(2)
-    return log_reg
-
-def _regret_eqn6(num_categories: int, unique_vals: int) -> float:
-    costs = _regret_precal(num_categories, unique_vals)
-    if costs <= 0.0:
-        return 0.0
-    return np.log2(costs)
-
-def bdeu(data: pd.DataFrame, child: int, parents: np.ndarray, ess: int=10) -> float:
-    columns = data.columns
-    data = data.apply(lambda col: pd.Categorical(col))
-    data = DiscreteData(data_source=data)
-    bdeu = BDeu(alpha=ess, data=data)
-    return bdeu.bdeu_score(columns[child], tuple(columns[p] for p in parents))[0]
-
+    def local_score_diff(self, node1, node2):
+        """
+        Method to compute the change in score resulting
+        from having node1 as a parent.
+        :param node1: int representing the parent node.
+        :param node2: int representing the node in question.
+        """
+        return self.local_score_diff_parents(node1, node2, [])
 
 class Data:
     """
@@ -489,14 +425,12 @@ class DiscreteData(Data):
         #print(flatcontab,flush=True)
         return flatcontab, strides
 
-
-
 class BDeu(DiscreteData):
     """
     Discrete data with attributes and methods for BDeu scoring
     """
 
-    def __init__(self,data,alpha=10.0):
+    def __init__(self,data,alpha=1.0):
         '''Initialises a `BDeu` object.
 
         Args:
