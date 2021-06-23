@@ -3,7 +3,7 @@ from baynet import DAG
 import pandas as pd
 import numpy as np
 
-from efcon.simple_hillclimbing import hill_climbing
+from wmse.simple_hillclimbing import hill_climbing
 from baynet import metrics
 
 import time

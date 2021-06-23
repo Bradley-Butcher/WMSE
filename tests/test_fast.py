@@ -1,10 +1,10 @@
 from baynet import DAG
 
-from efcon.fast import drce, score_file
+from wmse.fast import drce, score_file
 import pandas as pd
 import numpy as np
 
-from efcon.main import score
+from wmse.main import score
 
 
 def test_score_computes():

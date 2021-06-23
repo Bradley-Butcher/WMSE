@@ -11,8 +11,8 @@ import itertools
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from efcon.main import score, dag_score, score_from_data
-from efcon.plotting import plot_simplex_from_data, plot_distribution, plots_from_dag, score_plot
+from wmse.main import score, dag_score, score_from_data
+from wmse.plotting import plot_simplex_from_data, plot_distribution, plots_from_dag, score_plot
 
 
 def test_score_equal():
